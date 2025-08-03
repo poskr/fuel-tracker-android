@@ -11,22 +11,21 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1) Checkout your repo (including app.zip in the root)
+      # 1) Checkout (app.zip должен быть в корне)
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2) Extract app.zip
+      # 2) Unzip your app sources
       - name: Extract app.zip
         run: |
-          if [ -f "app.zip" ]; then
-            unzip -o app.zip -d app_src
-            mv app_src/* .
-          else
-            echo "❌ app.zip not found in repo root!"
+          if [ ! -f "app.zip" ]; then
+            echo "❌ app.zip not found!"
             exit 1
           fi
+          unzip -o app.zip -d app_src
+          mv app_src/* .
 
-      # 3) Install system dependencies (including git)
+      # 3) System deps (включая git)
       - name: Install system deps
         run: |
           sudo apt update
@@ -39,53 +38,61 @@ jobs:
             libssl-dev libffi-dev \
             zlib1g-dev libncurses5-dev libbz2-dev liblzma-dev
 
-      # 4) Install buildozer & Python libs via pip3 and add ~/.local/bin to PATH
+      # 4) Buildozer и питон-зависимости
       - name: Install Python deps
         run: |
           python3 -m pip install --upgrade pip setuptools
           python3 -m pip install --user buildozer cython kivy requests
+          # Добавляем ~/.local/bin в PATH для всех шагов
           echo "${HOME}/.local/bin" >> $GITHUB_PATH
 
-      # 5) Download Android SDK cmdline-tools, accept licenses & install platforms
-      - name: Install Android SDK + accept licenses
+      # 5) Android SDK + NDK + лицензии
+      - name: Install Android SDK + NDK + accept licenses
         run: |
-          wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O sdk.zip
+          # Command-line tools
+          wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O cmdline.zip
           mkdir -p $HOME/android-sdk/cmdline-tools
-          unzip -q sdk.zip -d $HOME/android-sdk/cmdline-tools
+          unzip -q cmdline.zip -d $HOME/android-sdk/cmdline-tools
           mv $HOME/android-sdk/cmdline-tools/cmdline-tools $HOME/android-sdk/cmdline-tools/latest
 
           export ANDROID_SDK_ROOT=$HOME/android-sdk
           export PATH=$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools:$ANDROID_SDK_ROOT/build-tools/30.0.3:$PATH
 
+          # Accept licenses
           yes | sdkmanager --sdk_root=$ANDROID_SDK_ROOT --licenses
+
+          # Install platforms, build-tools and NDK
           sdkmanager --sdk_root=$ANDROID_SDK_ROOT \
             "platform-tools" \
             "platforms;android-30" \
-            "build-tools;30.0.3"
+            "build-tools;30.0.3" \
+            "ndk;21.4.7075529"
 
-          # If aidl didn’t land, pull platform-tools
+          # Ensure aidl exists
           if ! command -v aidl >/dev/null 2>&1; then
-            echo "❗ aidl not found, installing platform-tools..."
+            echo "❗ aidl not found, extracting platform-tools..."
             wget https://dl.google.com/android/repository/platform-tools_r33.0.2-linux.zip -O plat-tools.zip
             unzip -q plat-tools.zip -d $ANDROID_SDK_ROOT/platform-tools
           fi
-          aidl --help
 
-          # Persist SDK paths for the rest of the job
+          # Persist SDK/NDK paths
           echo "${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin" >> $GITHUB_PATH
           echo "${ANDROID_SDK_ROOT}/platform-tools"             >> $GITHUB_PATH
           echo "${ANDROID_SDK_ROOT}/build-tools/30.0.3"         >> $GITHUB_PATH
+          echo "${ANDROID_SDK_ROOT}/ndk/21.4.7075529"           >> $GITHUB_PATH
 
-      # 6) Build APK with buildozer (no PATH override—let $GITHUB_PATH do its job)
+      # 6) Собираем APK, указывая внешние SDK/NDK
       - name: Build APK
         env:
+          ANDROIDSDK: $HOME/android-sdk
+          ANDROIDNDK: $HOME/android-sdk/ndk/21.4.7075529
           ANDROID_HOME: $HOME/android-sdk
-          ANDROID_SDK_ROOT: $HOME/android-sdk
+          ANDROID_NDK_HOME: $HOME/android-sdk/ndk/21.4.7075529
         run: |
           buildozer init || true
           buildozer -v android debug
 
-      # 7) Upload APK as artifact
+      # 7) Выкладываем APK
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
