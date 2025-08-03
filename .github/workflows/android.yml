@@ -51,7 +51,9 @@ jobs:
         run: |
           echo "🚀 Сборка APK, логи → build_log.txt"
           buildozer android debug > build_log.txt 2>&1 || true
-          tail -n 300 build_log.txt
+          echo "=== Последние 300 строк лога ==="
+          # Если tail действительно недоступен, выводим весь файл:
+          cat build_log.txt
 
       - name: Find and Copy APK
         run: |
