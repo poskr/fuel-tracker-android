@@ -1,22 +1,11 @@
-name: Build & Release APK
-
-on:
-  push:
-    branches:
-      - main
-  workflow_dispatch:
-
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      # ← вот этот шаг подхватывает артефакт с именем "app-source" из предыдущих job
       - name: Download app.zip artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: app-source
           path: .
@@ -31,42 +20,4 @@ jobs:
             exit 1
           fi
 
-      - name: Install Dependencies
-        run: |
-          sudo apt update
-          sudo apt install -y openjdk-11-jdk wget unzip zip python3-pip
-          pip install buildozer cython kivy requests
-
-      - name: Install Android SDK + Accept Licenses
-        run: |
-          wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O sdk.zip
-          mkdir -p $HOME/android-sdk/cmdline-tools
-          unzip -q sdk.zip -d $HOME/android-sdk/cmdline-tools
-          mv $HOME/android-sdk/cmdline-tools/cmdline-tools $HOME/android-sdk/cmdline-tools/latest
-
-          export ANDROID_SDK_ROOT=$HOME/android-sdk
-          export PATH=$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools:$ANDROID_SDK_ROOT/build-tools/30.0.3:$PATH
-
-          yes | sdkmanager --sdk_root=$ANDROID_SDK_ROOT --licenses
-          sdkmanager --sdk_root=$ANDROID_SDK_ROOT "platform-tools" "platforms;android-30" "build-tools;30.0.3"
-
-          # Проверяем aidl, если нет — скачиваем вручную
-          if ! which aidl; then
-            echo "❗ aidl не найден, скачиваю вручную..."
-            wget https://dl.google.com/android/repository/platform-tools_r33.0.2-linux.zip -O plat-tools.zip
-            unzip -q plat-tools.zip -d $HOME/android-sdk/platform-tools
-          fi
-          which aidl
-
-      - name: Build APK
-        run: |
-          export ANDROIDSDK=$HOME/android-sdk
-          export PATH=$ANDROIDSDK/build-tools/30.0.3:$ANDROIDSDK/platform-tools:$PATH
-          buildozer init || true
-          buildozer -v android debug
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: FuelTracker-APK
-          path: bin/*.apk
+      # …оставшиеся шаги по установке SDK, сборке и загрузке APK…
