@@ -1,4 +1,4 @@
-name: Build APK from ZIP
+name: Build & Release APK
 
 on:
   push:
@@ -11,34 +11,34 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Extract project from ZIP
+      - name: Extract Project ZIP
         run: |
-          ZIP_FILE=$(find . -name "*.zip" | head -n 1)
+          ZIP_FILE=$(find . -name "app.zip" -o -name "fuel_app.zip" | head -n 1)
           if [ -f "$ZIP_FILE" ]; then
             echo "📦 Найден архив: $ZIP_FILE"
             unzip -o "$ZIP_FILE" -d app_src
             mv app_src/* .
             rm -rf app_src
-            echo "✅ Архив распакован!"
           else
-            echo "⚠️ Архив .zip не найден. Сборка может не пройти."
+            echo "❌ Архив не найден, сборка остановлена!"
+            exit 1
           fi
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
+          python-version: '3.10'
 
-      - name: Install dependencies
+      - name: Install Dependencies
         run: |
           sudo apt update
           sudo apt install -y openjdk-11-jdk unzip zip wget
-          pip install buildozer cython virtualenv kivy requests
+          pip install buildozer cython kivy requests
 
-      - name: Install Android SDK & NDK
+      - name: Install Android SDK
         run: |
           wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O sdk.zip
           mkdir -p $HOME/android-sdk
@@ -54,8 +54,15 @@ jobs:
           buildozer init || true
           buildozer -v android debug
 
-      - name: Upload Artifact (APK)
+      - name: Upload APK to GitHub Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: FuelTracker-APK
           path: bin/*.apk
+
+      - name: Create GitHub Release and Upload APK
+        uses: softprops/action-gh-release@v1
+        with:
+          files: bin/*.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
