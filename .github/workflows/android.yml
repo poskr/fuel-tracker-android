@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1) Клонируем репозиторий (включая app.zip в корне)
+      # 1) Клонируем репозиторий (app.zip должен быть в корне)
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -26,11 +26,12 @@ jobs:
             exit 1
           fi
 
-      # 3) Устанавливаем системные зависимости + pip3
+      # 3) Устанавливаем системные зависимости (включая git)
       - name: Install system deps
         run: |
           sudo apt update
           sudo apt install -y \
+            git \
             openjdk-11-jdk \
             wget unzip zip \
             python3-pip \
@@ -38,14 +39,14 @@ jobs:
             libssl-dev libffi-dev \
             zlib1g-dev libncurses5-dev libbz2-dev liblzma-dev
 
-      # 4) Устанавливаем Buildozer и Python-библиотеки через pip3
+      # 4) Устанавливаем Buildozer и Python-библиотеки, добавляем ~/.local/bin в PATH
       - name: Install Python deps
         run: |
           python3 -m pip install --upgrade pip setuptools
           python3 -m pip install --user buildozer cython kivy requests
           echo "${HOME}/.local/bin" >> $GITHUB_PATH
 
-      # 5) Скачиваем Android SDK command-line tools и принимаем лицензии
+      # 5) Скачиваем Android SDK command-line tools, принимаем лицензии и устанавливаем платформы
       - name: Install Android SDK + accept licenses
         run: |
           wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O sdk.zip
@@ -54,40 +55,34 @@ jobs:
           mv $HOME/android-sdk/cmdline-tools/cmdline-tools $HOME/android-sdk/cmdline-tools/latest
 
           export ANDROID_SDK_ROOT=$HOME/android-sdk
-          # Добавляем инструменты SDK в PATH для этого шага
+          # ставим в PATH для этого шага, но ещё добавим в $GITHUB_PATH ниже
           export PATH=$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools:$ANDROID_SDK_ROOT/build-tools/30.0.3:$PATH
 
-          # Принимаем все лицензии
           yes | sdkmanager --sdk_root=$ANDROID_SDK_ROOT --licenses
-
-          # Устанавливаем необходимые компоненты
           sdkmanager --sdk_root=$ANDROID_SDK_ROOT \
             "platform-tools" \
             "platforms;android-30" \
             "build-tools;30.0.3"
 
-          # Проверяем, что aidl доступен (из build-tools)
+          # скачиваем aidl, если не появился автоматически
           if ! command -v aidl >/dev/null 2>&1; then
-            echo "❗ aidl не найден, скачиваю платформ-tools..."
+            echo "❗ aidl не найден, качаем platform-tools..."
             wget https://dl.google.com/android/repository/platform-tools_r33.0.2-linux.zip -O plat-tools.zip
             unzip -q plat-tools.zip -d $ANDROID_SDK_ROOT/platform-tools
           fi
-          aidl --help
 
-      # 6) Сборка APK через Buildozer
+          # добавляем в PATH для следующих шагов
+          echo "${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          echo "${ANDROID_SDK_ROOT}/platform-tools"             >> $GITHUB_PATH
+          echo "${ANDROID_SDK_ROOT}/build-tools/30.0.3"         >> $GITHUB_PATH
+
+      # 6) Собираем APK через buildozer (PATH уже прокинут автоматически)
       - name: Build APK
-        env:
-          ANDROIDSDK: $HOME/android-sdk
-          PATH: |
-            $HOME/.local/bin:
-            $HOME/android-sdk/build-tools/30.0.3:
-            $HOME/android-sdk/platform-tools:
-            $PATH
         run: |
           buildozer init || true
           buildozer -v android debug
 
-      # 7) Загрузка собранного APK как артефакт
+      # 7) Заливаем APK как артефакт
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
