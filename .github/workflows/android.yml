@@ -8,32 +8,29 @@ on:
 
 jobs:
   build-android:
-    name: Build for Android
     runs-on: ubuntu-latest
 
     steps:
-      # 1) Клонируем репо (с вашим app.zip или сразу с исходниками)
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2) Если вы всё же используете app.zip, распаковываем его
-      - name: Extract app.zip
-        if: ${{ exists('app.zip') }}
+      - name: Extract app.zip (optional)
         run: |
-          unzip -o app.zip -d src
-          mv src/* .
+          if [ -f "app.zip" ]; then
+            echo "📦 app.zip found, extracting..."
+            unzip -o app.zip -d src
+            mv src/* .
+          else
+            echo "⚠️ app.zip not found, proceeding with repo sources."
+          fi
 
-      # 3) Собираем APK через готовый Docker-образ Buildozer
-      - name: Build with Buildozer
+      - name: Build APK with Buildozer
         uses: ArtemSBulgakov/buildozer-action@v1
         id: buildozer
         with:
-          # Папка с вашим buildozer.spec (обычно это корень)
           workdir: .
-          # Стабильная версия buildozer
           buildozer_version: stable
 
-      # 4) Загружаем готовый APK как артефакт
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
