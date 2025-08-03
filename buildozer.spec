@@ -1,3 +1,4 @@
+[app]
 title = FuelTracker
 package.name = fueltracker
 package.domain = com.yourdomain
