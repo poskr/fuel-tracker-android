@@ -1,14 +1,82 @@
-Run buildozer android debug
-Traceback (most recent call last):
-  File "/opt/hostedtoolcache/Python/3.10.18/x64/bin/buildozer", line 7, in <module>
-    sys.exit(main())
-  File "/opt/hostedtoolcache/Python/3.10.18/x64/lib/python3.10/site-packages/buildozer/scripts/client.py", line 13, in main
-    Buildozer().run_command(sys.argv[1:])
-  File "/opt/hostedtoolcache/Python/3.10.18/x64/lib/python3.10/site-packages/buildozer/__init__.py", line 127, in __init__
-    self.config.read(filename, "utf-8")
-  File "/opt/hostedtoolcache/Python/3.10.18/x64/lib/python3.10/configparser.py", line 699, in read
-    self._read(fp, filename)
-  File "/opt/hostedtoolcache/Python/3.10.18/x64/lib/python3.10/configparser.py", line 1098, in _read
-    raise DuplicateOptionError(sectname, optname,
-configparser.DuplicateOptionError: While reading from 'buildozer.spec' [line 24]: option 'android.permissions' in section 'app' already exists
-Error: Process completed with exit code 1.
+name: Build Android APK (AutoFix + Stable)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 🛠️ Auto-fix buildozer.spec
+        run: |
+          if [ -f buildozer.spec ]; then
+            echo "🛠 Чищу дубли android.permissions..."
+            awk '!/^android.permissions.*$/ || !seen[$0]++' buildozer.spec > fixed && mv fixed buildozer.spec
+            grep -i "android.permissions" buildozer.spec
+          else
+            echo "⚠️ buildozer.spec не найден, билд может упасть."
+          fi
+
+      - name: 🐍 Set up Python 3.10
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: 📦 Install Buildozer + deps
+        run: |
+          sudo apt update
+          sudo apt install -y zip unzip wget curl openjdk-17-jdk
+          pip install --upgrade pip
+          pip install buildozer cython virtualenv requests
+
+      - name: 📥 Install Android SDK + AIDL
+        run: |
+          mkdir -p $HOME/android-sdk
+          cd $HOME/android-sdk
+          wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O sdk-tools.zip
+          unzip sdk-tools.zip -d cmdline-tools
+          mkdir -p cmdline-tools/latest
+          mv cmdline-tools/cmdline-tools/* cmdline-tools/latest/
+          export ANDROID_HOME=$HOME/android-sdk
+          export PATH=$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH
+          yes | sdkmanager --licenses
+          yes | sdkmanager "platform-tools" "platforms;android-33" "build-tools;34.0.0" "ndk;25.2.9519653"
+
+      - name: 🔨 Build APK with Buildozer
+        env:
+          ANDROIDSDK: $HOME/android-sdk
+          ANDROIDNDK: $HOME/android-sdk/ndk/25.2.9519653
+          PATH: $HOME/android-sdk/build-tools/34.0.0:$HOME/android-sdk/platform-tools:$PATH
+        run: |
+          echo "🚀 Сборка APK, логи → build_log.txt"
+          buildozer android debug > build_log.txt 2>&1 || true
+          tail -n 300 build_log.txt
+
+      - name: 🔍 Find and Copy APK
+        run: |
+          mkdir -p bin
+          APK_PATH=$(find . -name "*.apk" | head -n 1)
+          if [ -f "$APK_PATH" ]; then
+            cp "$APK_PATH" bin/
+            echo "✅ APK найден: $APK_PATH"
+          else
+            echo "❌ APK не найден! Смотри build_log.txt в артефактах."
+            exit 1
+          fi
+
+      - name: 📤 Upload APK as Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FuelTracker-Android
+          path: bin/*.apk
+
+      - name: 🚀 Create GitHub Release with APK
+        uses: softprops/action-gh-release@v1
+        with:
+          files: bin/*.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
