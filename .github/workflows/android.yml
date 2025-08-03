@@ -11,25 +11,22 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # 1) Клонируем репозиторий — вместе с app.zip
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Download app.zip artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: app-source   # имя артефакта, который вы ранее залили
-          path: .
-
+      # 2) Распаковываем app.zip, который лежит в корне репо
       - name: Extract app.zip
         run: |
           if [ -f "app.zip" ]; then
             unzip -o app.zip -d app_src
             mv app_src/* .
           else
-            echo "❌ app.zip не найден!"
+            echo "❌ app.zip не найден в корне репозитория!"
             exit 1
           fi
 
+      # 3) Устанавливаем зависимости Python и Buildozer
       - name: Install dependencies
         run: |
           sudo apt update
@@ -37,6 +34,7 @@ jobs:
           pip install --upgrade pip
           pip install buildozer cython kivy requests
 
+      # 4) Скачиваем Android SDK command-line tools и принимаем лицензии
       - name: Install Android SDK + accept licenses
         run: |
           wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O sdk.zip
@@ -50,14 +48,15 @@ jobs:
           yes | sdkmanager --sdk_root=$ANDROID_SDK_ROOT --licenses
           sdkmanager --sdk_root=$ANDROID_SDK_ROOT "platform-tools" "platforms;android-30" "build-tools;30.0.3"
 
-          # Проверяем aidl, если не найден — скачиваем вручную
+          # Проверяем aidl, при необходимости скачиваем вручную
           if ! command -v aidl >/dev/null 2>&1; then
             echo "❗ aidl не найден, скачиваю вручную..."
             wget https://dl.google.com/android/repository/platform-tools_r33.0.2-linux.zip -O plat-tools.zip
-            unzip -q plat-tools.zip -d $HOME/android-sdk/platform-tools
+            unzip -q plat-tools.zip -d $ANDROID_SDK_ROOT/platform-tools
           fi
           aidl --help
 
+      # 5) Собираем APK через Buildozer
       - name: Build APK
         env:
           ANDROIDSDK: $HOME/android-sdk
@@ -66,6 +65,7 @@ jobs:
           buildozer init || true
           buildozer -v android debug
 
+      # 6) Загружаем собранный APK как артефакт
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
