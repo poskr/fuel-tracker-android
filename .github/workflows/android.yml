@@ -53,7 +53,7 @@ jobs:
         run: |
           echo "🚀 Сборка APK, логи → build_log.txt"
           buildozer android debug > build_log.txt 2>&1 || true
-          echo "=== Логи сборки ==="
+          echo "=== Содержимое build_log.txt ==="
           cat build_log.txt
 
       - name: Find and Copy APK
