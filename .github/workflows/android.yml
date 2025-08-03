@@ -11,9 +11,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # 1) Клонируем репо (с вашим buildozer.spec и исходниками)
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # 2) Распаковываем app.zip — если вы всё ещё им пользуетесь
       - name: Extract app.zip (optional)
         run: |
           if [ -f "app.zip" ]; then
@@ -21,16 +23,18 @@ jobs:
             unzip -o app.zip -d src
             mv src/* .
           else
-            echo "⚠️ app.zip not found, proceeding with repo sources."
+            echo "⚠️ app.zip not found, using repo sources."
           fi
 
+      # 3) Собираем APK внутри Docker-образа с Buildozer
       - name: Build APK with Buildozer
         uses: ArtemSBulgakov/buildozer-action@v1
         id: buildozer
         with:
-          workdir: .
-          buildozer_version: stable
+          workdir: .                 # тут лежит ваш buildozer.spec
+          buildozer_version: stable  # или конкретная версия, например 1.2.0
 
+      # 4) Загружаем APK как артефакт
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
