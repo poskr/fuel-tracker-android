@@ -1,13 +1,23 @@
+name: Build & Release APK
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Download app.zip artifact
         uses: actions/download-artifact@v4
         with:
-          name: app-source
+          name: app-source   # имя артефакта, который вы ранее залили
           path: .
 
       - name: Extract app.zip
@@ -20,4 +30,44 @@ jobs:
             exit 1
           fi
 
-      # …оставшиеся шаги по установке SDK, сборке и загрузке APK…
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y openjdk-11-jdk wget unzip zip python3-pip
+          pip install --upgrade pip
+          pip install buildozer cython kivy requests
+
+      - name: Install Android SDK + accept licenses
+        run: |
+          wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O sdk.zip
+          mkdir -p $HOME/android-sdk/cmdline-tools
+          unzip -q sdk.zip -d $HOME/android-sdk/cmdline-tools
+          mv $HOME/android-sdk/cmdline-tools/cmdline-tools $HOME/android-sdk/cmdline-tools/latest
+
+          export ANDROID_SDK_ROOT=$HOME/android-sdk
+          export PATH=$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools:$ANDROID_SDK_ROOT/build-tools/30.0.3:$PATH
+
+          yes | sdkmanager --sdk_root=$ANDROID_SDK_ROOT --licenses
+          sdkmanager --sdk_root=$ANDROID_SDK_ROOT "platform-tools" "platforms;android-30" "build-tools;30.0.3"
+
+          # Проверяем aidl, если не найден — скачиваем вручную
+          if ! command -v aidl >/dev/null 2>&1; then
+            echo "❗ aidl не найден, скачиваю вручную..."
+            wget https://dl.google.com/android/repository/platform-tools_r33.0.2-linux.zip -O plat-tools.zip
+            unzip -q plat-tools.zip -d $HOME/android-sdk/platform-tools
+          fi
+          aidl --help
+
+      - name: Build APK
+        env:
+          ANDROIDSDK: $HOME/android-sdk
+          PATH: $HOME/android-sdk/build-tools/30.0.3:$HOME/android-sdk/platform-tools:$PATH
+        run: |
+          buildozer init || true
+          buildozer -v android debug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: FuelTracker-APK
+          path: bin/*.apk
