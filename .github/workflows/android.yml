@@ -1,4 +1,4 @@
-name: Build Kivy Android APK
+name: Build & Release Kivy Android APK
 
 on:
   push:
@@ -22,12 +22,11 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt update
-          sudo apt install -y openjdk-11-jdk unzip zip
+          sudo apt install -y openjdk-11-jdk unzip zip wget
           pip install buildozer cython virtualenv kivy requests
 
       - name: Install Android SDK & NDK
         run: |
-          sudo apt install -y wget
           wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O sdk.zip
           mkdir -p $HOME/android-sdk
           unzip -q sdk.zip -d $HOME/android-sdk/cmdline-tools
@@ -42,8 +41,27 @@ jobs:
           buildozer init || true
           buildozer -v android debug
 
-      - name: Upload APK Artifact
+      - name: Upload Artifact (for Actions)
         uses: actions/upload-artifact@v4
         with:
           name: FuelTracker-APK
           path: bin/*.apk
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: Fuel Tracker APK v1.0.${{ github.run_number }}
+          body: |
+            ✅ Автоматическая сборка Kivy Android APK.
+            🔥 Скачай готовый APK ниже.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload APK to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          files: bin/*.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
