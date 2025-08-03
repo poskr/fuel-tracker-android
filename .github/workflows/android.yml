@@ -27,21 +27,20 @@ jobs:
         run: |
           buildozer android debug
 
-      - name: 📂 Move APK to bin folder
+      - name: 🔍 Find and Copy APK
         run: |
           mkdir -p bin
-          find . -name "*.apk" -exec cp {} bin/ \;
+          APK_PATH=$(find . -name "*.apk" | head -n 1)
+          if [ -f "$APK_PATH" ]; then
+            cp "$APK_PATH" bin/
+            echo "✅ APK found at: $APK_PATH"
+          else
+            echo "❌ APK NOT FOUND!"
+            exit 1
+          fi
 
       - name: 📤 Upload APK as Artifact
         uses: actions/upload-artifact@v4
         with:
           name: FuelTracker-Android
           path: bin/*.apk
-
-      # === (Опция) Автоматическая публикация APK в Releases ===
-      - name: 🚀 Create GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: bin/*.apk
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
