@@ -1,4 +1,4 @@
-name: Build & Release Kivy Android APK
+name: Build APK from ZIP
 
 on:
   push:
@@ -13,6 +13,19 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Extract project from ZIP
+        run: |
+          ZIP_FILE=$(find . -name "*.zip" | head -n 1)
+          if [ -f "$ZIP_FILE" ]; then
+            echo "📦 Найден архив: $ZIP_FILE"
+            unzip -o "$ZIP_FILE" -d app_src
+            mv app_src/* .
+            rm -rf app_src
+            echo "✅ Архив распакован!"
+          else
+            echo "⚠️ Архив .zip не найден. Сборка может не пройти."
+          fi
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -41,27 +54,8 @@ jobs:
           buildozer init || true
           buildozer -v android debug
 
-      - name: Upload Artifact (for Actions)
+      - name: Upload Artifact (APK)
         uses: actions/upload-artifact@v4
         with:
           name: FuelTracker-APK
           path: bin/*.apk
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v1.0.${{ github.run_number }}
-          name: Fuel Tracker APK v1.0.${{ github.run_number }}
-          body: |
-            ✅ Автоматическая сборка Kivy Android APK.
-            🔥 Скачай готовый APK ниже.
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload APK to Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v1.0.${{ github.run_number }}
-          files: bin/*.apk
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
