@@ -1,55 +1,75 @@
-name: Build & Release APK
+name: Build Android APK (Stable & Auto-Fix spec)
 
 on:
   push:
-    branches:
-      - main
+    branches: [ "main" ]
   workflow_dispatch:
 
 jobs:
-  build-android:
+  build:
     runs-on: ubuntu-latest
 
     steps:
-      # 1) Checkout repo without persisting the token in .git/config
-      - name: Checkout repository
+      - name: Checkout Repository
         uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-          fetch-depth: 0
 
-      # 2) Unzip app.zip if present (optional)
-      - name: Extract app.zip (optional)
+      - name: Extract app.zip
         run: |
           if [ -f "app.zip" ]; then
-            echo "📦 app.zip found, extracting..."
-            unzip -o app.zip -d src
-            mv src/* .
+            unzip -o app.zip -d app_src
+            mv app_src/* .
           else
-            echo "⚠️ app.zip not found, using repo sources."
+            echo "❌ app.zip не найден!"
+            exit 1
           fi
 
-      # 3) Build APK with Buildozer inside Docker, teeing the log to a file
-      - name: Build APK with Buildozer
-        uses: ArtemSBulgakov/buildozer-action@v1
-        id: buildozer
-        with:
-          workdir: .
-          buildozer_version: stable
-          # capture full buildozer output into buildozer.log
-          command: |
-            buildozer android debug 2>&1 | tee buildozer.log
+      # 🛠 Исправляем buildozer.spec перед билдом
+      - name: Fix buildozer.spec duplicates
+        run: |
+          if [ -f buildozer.spec ]; then
+            echo "🛠 Чищу дубли android.permissions в buildozer.spec..."
+            awk '!seen[$0]++' buildozer.spec > fixed.spec && mv fixed.spec buildozer.spec
+            grep -i "android.permissions" buildozer.spec
+          else
+            echo "⚠️ buildozer.spec не найден!"
+          fi
 
-      # 4) Upload the full Buildozer log as an artifact
-      - name: Upload full Buildozer log
-        uses: actions/upload-artifact@v4
-        with:
-          name: buildozer-log
-          path: buildozer.log
+      - name: Install Dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y openjdk-17-jdk wget unzip zip python3-pip
+          pip install buildozer cython kivy requests
 
-      # 5) Upload the generated APK
+      - name: Install Android SDK + AIDL
+        run: |
+          export ANDROID_SDK_ROOT=$HOME/android-sdk
+          mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
+          wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O sdk.zip
+          unzip -q sdk.zip -d $ANDROID_SDK_ROOT/cmdline-tools
+          mv $ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools $ANDROID_SDK_ROOT/cmdline-tools/latest
+
+          export PATH=$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH
+          yes | sdkmanager --sdk_root=$ANDROID_SDK_ROOT --licenses || true
+          yes | sdkmanager --sdk_root=$ANDROID_SDK_ROOT "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+
+          export PATH=$ANDROID_SDK_ROOT/build-tools/34.0.0:$PATH
+          if ! which aidl; then
+            echo "⚠️ aidl не найден, скачиваю вручную..."
+            mkdir -p $ANDROID_SDK_ROOT/build-tools/34.0.0
+            wget https://raw.githubusercontent.com/openai-tools/android-aidl-binary/main/aidl -O $ANDROID_SDK_ROOT/build-tools/34.0.0/aidl
+            chmod +x $ANDROID_SDK_ROOT/build-tools/34.0.0/aidl
+          fi
+
+      - name: Build APK (Silent)
+        run: |
+          export ANDROIDSDK=$HOME/android-sdk
+          export PATH=$ANDROIDSDK/build-tools/34.0.0:$ANDROIDSDK/platform-tools:$PATH
+          echo "🚀 Сборка APK, лог → build_log.txt"
+          buildozer -v android debug > build_log.txt 2>&1 || true
+          tail -n 500 build_log.txt
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: FuelTracker-APK
-          path: ${{ steps.buildozer.outputs.filename }}
+          path: bin/*.apk
