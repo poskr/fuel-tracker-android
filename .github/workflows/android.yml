@@ -14,16 +14,15 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Extract Project ZIP
+      - name: Extract app.zip
         run: |
-          ZIP_FILE=$(find . -name "app.zip" -o -name "fuel_app.zip" | head -n 1)
-          if [ -f "$ZIP_FILE" ]; then
-            echo "📦 Найден архив: $ZIP_FILE"
-            unzip -o "$ZIP_FILE" -d app_src
+          if [ -f "app.zip" ]; then
+            echo "📦 Найден архив app.zip"
+            unzip -o app.zip -d app_src
             mv app_src/* .
             rm -rf app_src
           else
-            echo "❌ Архив не найден, сборка остановлена!"
+            echo "❌ app.zip не найден, сборка остановлена!"
             exit 1
           fi
 
@@ -38,19 +37,28 @@ jobs:
           sudo apt install -y openjdk-11-jdk unzip zip wget
           pip install buildozer cython kivy requests
 
-      - name: Install Android SDK
+      - name: Install Android SDK (with AIDL)
         run: |
           wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O sdk.zip
           mkdir -p $HOME/android-sdk
           unzip -q sdk.zip -d $HOME/android-sdk/cmdline-tools
           mv $HOME/android-sdk/cmdline-tools/cmdline-tools $HOME/android-sdk/cmdline-tools/latest
           yes | $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses
-          yes | $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-30" "build-tools;30.0.3"
+          yes | $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager \
+            "platform-tools" \
+            "platforms;android-30" \
+            "build-tools;30.0.3" \
+            "tools"
+
+          # ✅ Добавляем aidl в PATH
+          export ANDROIDSDK=$HOME/android-sdk
+          export PATH=$ANDROIDSDK/platform-tools:$ANDROIDSDK/build-tools/30.0.3:$PATH
+          which aidl || echo "⚠️ AIDL все ещё не найден!"
 
       - name: Build APK
         run: |
           export ANDROIDSDK=$HOME/android-sdk
-          export PATH=$ANDROIDSDK/platform-tools:$PATH
+          export PATH=$ANDROIDSDK/platform-tools:$ANDROIDSDK/build-tools/30.0.3:$PATH
           buildozer init || true
           buildozer -v android debug
 
