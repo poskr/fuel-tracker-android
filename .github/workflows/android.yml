@@ -1,8 +1,6 @@
-name: Build Android APK (Stable & Auto-Fix spec)
+name: Build Android APK (Stable Auto-Fix)
 
 on:
-  push:
-    branches: [ "main" ]
   workflow_dispatch:
 
 jobs:
@@ -10,66 +8,40 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repository
+      - name: 📥 Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Extract app.zip
+      - name: 🐍 Set up Python 3.10
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: 📦 Install Dependencies
         run: |
-          if [ -f "app.zip" ]; then
-            unzip -o app.zip -d app_src
-            mv app_src/* .
-          else
-            echo "❌ app.zip не найден!"
-            exit 1
-          fi
+          sudo apt-get update
+          sudo apt-get install -y zip unzip openjdk-17-jdk
+          pip install --upgrade pip
+          pip install buildozer cython virtualenv
 
-      # 🛠 Исправляем buildozer.spec перед билдом
-      - name: Fix buildozer.spec duplicates
+      - name: 🔨 Build APK with Buildozer
         run: |
-          if [ -f buildozer.spec ]; then
-            echo "🛠 Чищу дубли android.permissions в buildozer.spec..."
-            awk '!seen[$0]++' buildozer.spec > fixed.spec && mv fixed.spec buildozer.spec
-            grep -i "android.permissions" buildozer.spec
-          else
-            echo "⚠️ buildozer.spec не найден!"
-          fi
+          buildozer android debug
 
-      - name: Install Dependencies
+      - name: 📂 Move APK to bin folder
         run: |
-          sudo apt update
-          sudo apt install -y openjdk-17-jdk wget unzip zip python3-pip
-          pip install buildozer cython kivy requests
+          mkdir -p bin
+          find . -name "*.apk" -exec cp {} bin/ \;
 
-      - name: Install Android SDK + AIDL
-        run: |
-          export ANDROID_SDK_ROOT=$HOME/android-sdk
-          mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
-          wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O sdk.zip
-          unzip -q sdk.zip -d $ANDROID_SDK_ROOT/cmdline-tools
-          mv $ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools $ANDROID_SDK_ROOT/cmdline-tools/latest
-
-          export PATH=$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH
-          yes | sdkmanager --sdk_root=$ANDROID_SDK_ROOT --licenses || true
-          yes | sdkmanager --sdk_root=$ANDROID_SDK_ROOT "platform-tools" "platforms;android-34" "build-tools;34.0.0"
-
-          export PATH=$ANDROID_SDK_ROOT/build-tools/34.0.0:$PATH
-          if ! which aidl; then
-            echo "⚠️ aidl не найден, скачиваю вручную..."
-            mkdir -p $ANDROID_SDK_ROOT/build-tools/34.0.0
-            wget https://raw.githubusercontent.com/openai-tools/android-aidl-binary/main/aidl -O $ANDROID_SDK_ROOT/build-tools/34.0.0/aidl
-            chmod +x $ANDROID_SDK_ROOT/build-tools/34.0.0/aidl
-          fi
-
-      - name: Build APK (Silent)
-        run: |
-          export ANDROIDSDK=$HOME/android-sdk
-          export PATH=$ANDROIDSDK/build-tools/34.0.0:$ANDROIDSDK/platform-tools:$PATH
-          echo "🚀 Сборка APK, лог → build_log.txt"
-          buildozer -v android debug > build_log.txt 2>&1 || true
-          tail -n 500 build_log.txt
-
-      - name: Upload APK
+      - name: 📤 Upload APK as Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: FuelTracker-APK
+          name: FuelTracker-Android
           path: bin/*.apk
+
+      # === (Опция) Автоматическая публикация APK в Releases ===
+      - name: 🚀 Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: bin/*.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
